@@ -11,6 +11,7 @@ psd = function(data) {
   this.colorModeData = new psdColorModeData(this);
   this.imageResources = new psdImageResources(this);
   this.layerMask = new psdLayerMask(this);
+  // this.imageData = new psdImageData(this);
 }
 
 psd.prototype = {}
@@ -98,49 +99,10 @@ psdImageResources = function(psd) {
     resourceSize = this.processResourceBlock(psd);
     lenMissing -= resourceSize;
   }
-  // TODO: Trow error if we go over the expected lenght (if lenMissing != 0)
-
-  return;
-
-  // TODO: Fix Me. Right now processResourceBlock just reads the expected lenght
-  // and seeks forward to that point. It doesn't actually read it. We will need
-  // to read that, The below code is what I used to get pass the 1st 3 resource
-  // block. I should abstract most of that out into the actual processResourceBlocks.
-
-  // this.signature = psd.ds.readString(4);
-  // this.id = psd.ds.readUint16();
-  // this.namelen = psd.ds.readUint8();
-  // this.namesize = psd.ds.readUint8();
-  // this.len = psd.pad2(psd.ds.readUint32());
-  // this.data = psd.ds.readUint32();
-  // this.data2 = psd.ds.readUint32();
-  // this.signature2 = psd.ds.readString(4);
-  // this.id2 = psd.ds.readUint16();
-  // this.namelen2 = psd.pad2(psd.ds.readUint8());
-  // this.namesize2 = psd.ds.readUint8();
-  // this.len2 = psd.ds.readUint32();
-  // // We need to build a buffer big enough to contain the len. Len is always going
-  // // to be even, if not, we pad it to make it even. Ex len = 7 we make it 8.
-  // var elementSize = 4 * Uint32Array.BYTES_PER_ELEMENT;
-  // var buffer = new ArrayBuffer(4 * elementSize);
-  // var test = new Uint32Array(buffer, 0);
-  // for (var i = test.length - 1; i >= 0; i--) {
-  //   test[i] = psd.ds.readUint8();
-  // };
-  // this.data3 = test;
-  // this.signature3 = psd.ds.readString(4);
-  // this.id3 = psd.ds.readUint16();
-  // this.namelen3 = psd.ds.readUint8();
-  // this.namesize3 = psd.ds.readUint8();
-  // this.len3 = psd.ds.readUint32();
-
-  // // len = this.size;
-  // // while (len > 0) {
-  // //   len -= this.processResourceBlocks(psd);
-  // // }
-  // // if (len != 0) {
-  // //   console.log("Image resource overran the expected size");
-  // // }
+  if (lenMissing < 0) {
+    // TODO: Trow error if we go over the expected lenght (if lenMissing != 0)
+    console.log('Image Resources failed (psdImageResources) Over: ' + lenMissing);
+  }
 }
 
 psdImageResources.prototype = {
@@ -155,8 +117,9 @@ psdImageResources.prototype = {
 
 psdImageResourceBlock = function(psd) {
   var start = psd.ds.position;
-  var dataBuffer, bufferElementSize = 0, bytesOfData = 0;
+  var dataBuffer, bufferElementSize = 0;
   this.totalSize = 0;
+  this.len = 0;
   this.signature = psd.ds.readString(4);
   this.id = psd.ds.readUint16();
 
@@ -168,40 +131,20 @@ psdImageResourceBlock = function(psd) {
     this.name = psd.ds.readUint8();
   }
   else {
-    // Todo: cross this when we get here.
+    // TODO: Trow error if actually get a len larger than 0
+    console.log('Image Resource block failed namelen: ' + this.namelen);
   }
 
-  bytesOfData = this.len = Util.pad2(psd.ds.readUint32());
+  this.len = Util.pad2(psd.ds.readUint32());
   this.totalSize = (psd.ds.position + this.len) - start;
-  // For now we're just going to skip through all the resources.
-  // TODO: Come back for me.
-  psd.ds.seek(psd.ds.position + this.len);
-  // var elementSize = 4 * Uint8Array.BYTES_PER_ELEMENT;
-  // var buffer = new ArrayBuffer(4 * elementSize);
-  // this.data = new Uint8Array(buffer, 0);
-  // for (var i = this.data.length - 1; i >= 0; i--) {
-  //   this.data[i] = psd.ds.readUint8();
-  // };
 
-  //   size = (bytesOfData / 4) * Uint32Array.BYTES_PER_ELEMENT;
-  //   console.log(size);
-  //   bytesOfData -= size;
-  //   bufferElementSize  += size;
-  //   console.log(size);
-  //   var x = 0
-  //   while (size > 0) {
-  //     x++;
-  //     console.log('x');
-  //     this.data = psd.ds.readUint32();
-  //     size -= 4;
-  //     if (x == 7) {
-  //       break;
-  //     }
-  //   }
-  // }
-  // if (bytesOfData >= 2) {
-
-  // }
+  // Set up an Uint8Array to store our data.
+  var elementSize = this.len * Uint8Array.BYTES_PER_ELEMENT;
+  var buffer = new ArrayBuffer(elementSize);
+  this.data = new Uint8Array(buffer);
+  for (var i = this.data.length - 1; i >= 0; i--) {
+    this.data[i] = psd.ds.readUint8();
+  };
 }
 
 /**
@@ -228,10 +171,11 @@ psdLayerMask.prototype = {
  * @return {[type]}     [description]
  */
 psdLayerMaskInfo = function(psd) {
+  this.imageDataRecords = [];
+
   this.len = Util.pad2(psd.ds.readUint32());
   this.layerCount = psd.ds.readUint16();
   this.layerRecords = this.parseLayerRecords(psd);
-  this.imageDataRecords = [];
 }
 
 psdLayerMaskInfo.prototype = {
@@ -256,5 +200,73 @@ psdLayerRecord = function(psd) {
   this.right = psd.ds.readUint32();
   this.bottom = psd.ds.readUint32();
   this.channels = psd.ds.readUint16();
-  this.channelsInfo = psd.ds
+  this.channelsInfo = [];
+  // Six bytes per channel
+  for (var i = 1; i <= this.channels; i++) {
+    this.channelsInfo[i] = {};
+    this.channelsInfo[i].id = psd.ds.readUint16();
+    this.channelsInfo[i].len = psd.ds.readUint32();
+  };
+  this.blendModeSignature = psd.ds.readString(4);
+  this.blendModeKey = psd.ds.readString(4);
+  this.blendModeName = this.getBlendModeName();
+  this.opacity = psd.ds.readUint8();
+  this.clipping = psd.ds.readUint8();
+
+  // LEFT OF HERE, I DO THIS TO REMEMBER ;-)
+  // Note: this.flags is single bits so I need to start using BitView.
+  // It should be 4 bits
+  // psd.ds._realloc(1);
+  // console.log(psd.ds._buffer);
+  // this._flags = new BitView(psd.ds._buffer);
+  // console.log (this._flags.getBit(1));
+  // console.log (this._flags.getBit(2));
+  // console.log (this._flags.getBit(3));
+  // console.log (this._flags.getBit(4));
+  // psd.ds.position += 1;
+  // console.log(this._flags);
+}
+
+psdLayerRecord.prototype = {
+  getBlendModeName: function() {
+    var key = this.blendModeKey;
+    // Note: The names are padded to always be 4 characters.
+    var names = {
+      'pass': 'pass through',
+      'norm': 'normal',
+      'diss': 'dissolve',
+      'dark': 'darken',
+      'mul ': 'multiply',
+      'idiv': 'color burn',
+      'lbrn': 'linear burn',
+      'dkCl': 'darker color',
+      'lite': 'lighten',
+      'scrn': 'screen',
+      'div ': 'color dodge',
+      'lddg': 'linear dodge',
+      'lgCl': 'lighter color',
+      'over': 'overlay',
+      'sLit': 'soft light',
+      'hLit': 'hard light',
+      'vLit': 'vivid light',
+      'lLit': 'linear light',
+      'pLit': 'pin light',
+      'hMix': 'hard mix',
+      'diff': 'difference',
+      'smud': 'exclusion',
+      'fsub': 'subtract',
+      'fdiv': 'divide',
+      'hue ': 'hue',
+      'sat ': 'saturation',
+      'colr': 'color',
+      'lum ': 'luminosity',
+    }
+    return names[key];
+  }
+}
+
+psdImageData = function (psd) {
+  psd.ds.seek(psd.ds.position + psd.layerMask.len - 4);
+  this.compression = psd.ds.readUint16();
+  this.data = psd.ds.readUint8Array(psd.ds._byteLength - psd.ds.position);
 }
