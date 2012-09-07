@@ -176,14 +176,22 @@ psdLayerMaskInfo = function(psd) {
   this.len = Util.pad2(psd.ds.readUint32());
   this.layerCount = psd.ds.readUint16();
   this.layerRecords = this.parseLayerRecords(psd);
+
+  // Add this this.channelImageData.
+  //  Seperate this out into new psdChannelImageData()
+  //  See http://www.adobe.com/devnet-apps/photoshop/fileformatashtml/PhotoshopFileFormats.htm#50577409_26431
 }
 
 psdLayerMaskInfo.prototype = {
 
   parseLayerRecords: function (psd) {
     var records = [], layerRecord;
-    layerRecord = new psdLayerRecord(psd);
+    for (var i = 1; i < this.layerCount; i++) {
+      layerRecord = new psdLayerRecord(psd);
+      records.push(layerRecord);
+    };
     records.push(layerRecord);
+
     return records;
   }
 }
@@ -201,33 +209,54 @@ psdLayerRecord = function(psd) {
   this.bottom = psd.ds.readUint32();
   this.channels = psd.ds.readUint16();
   this.channelsInfo = [];
-  // Six bytes per channel
-  for (var i = 1; i <= this.channels; i++) {
-    this.channelsInfo[i] = {};
-    this.channelsInfo[i].id = psd.ds.readUint16();
-    this.channelsInfo[i].len = psd.ds.readUint32();
-  };
+  if (this.channels > 0) {
+    for (var i = 0; i < this.channels; i++) {
+      this.channelsInfo[i] = {};
+      this.channelsInfo[i].id = psd.ds.readUint16();
+      this.channelsInfo[i].len = psd.ds.readUint32();
+      this.channelsInfo[i].rgbakey = this.getRGBAType(this.channelsInfo[i].id);
+    };
+  }
   this.blendModeSignature = psd.ds.readString(4);
   this.blendModeKey = psd.ds.readString(4);
   this.blendModeName = this.getBlendModeName();
   this.opacity = psd.ds.readUint8();
   this.clipping = psd.ds.readUint8();
 
-  // LEFT OF HERE, I DO THIS TO REMEMBER ;-)
-  // Note: this.flags is single bits so I need to start using BitView.
-  // It should be 4 bits
-  // psd.ds._realloc(1);
-  // console.log(psd.ds._buffer);
-  // this._flags = new BitView(psd.ds._buffer);
-  // console.log (this._flags.getBit(1));
-  // console.log (this._flags.getBit(2));
-  // console.log (this._flags.getBit(3));
-  // console.log (this._flags.getBit(4));
-  // psd.ds.position += 1;
-  // console.log(this._flags);
+  // TODO: Fix me. This needs to be actual bits
+  // Skiping the Flags
+  this.flags = psd.ds.readUint8();
+
+  this.filler = psd.ds.readUint8();
+  this.lenDataBlendingName = psd.ds.readUint32();
+  this.startLen = psd.ds.position;
+  this.layerMask = new psdLayerMaskAdjustmentData(psd);
+  this.layerBlendingRanges = new psdLayerBlendingRangesData(psd);
+
+  // "Pascal string, padded to make the size even".
+  // The 1st byte tells us how long the name is.
+  this.namelen = Util.pad2(psd.ds.readUint8());
+  if (this.namelen == 0) {
+    // skip the extra byte.
+    // this.name = psd.ds.readUint8();
+  }
+  else {
+    this.layername = psd.ds.readString(this.namelen);
+
+    // TODO: WHAT THE HELL IS IN THIS EMPTY SPACE.
+    // We have to pad it to the end in order to move on the the next layer.
+    psd.ds.position = this.startLen + this.lenDataBlendingName;
+  }
 }
 
 psdLayerRecord.prototype = {
+  getRGBAType: function(type) {
+    if (type == 65535) {
+      return "A";
+    }
+    return "RGB".substring(type, type + 1);
+  },
+
   getBlendModeName: function() {
     var key = this.blendModeKey;
     // Note: The names are padded to always be 4 characters.
@@ -263,6 +292,21 @@ psdLayerRecord.prototype = {
     }
     return names[key];
   }
+}
+
+psdLayerMaskAdjustmentData = function(psd) {
+  this.size = psd.ds.readUint32();
+  if (this.size == 0) {
+    // We'll skip the other processing.
+    return;
+  }
+}
+
+psdLayerBlendingRangesData = function(psd) {
+  this.size = psd.ds.readUint32();
+  // Seek and skip this for now.
+  // TODO: Fix me.
+  psd.ds.position = psd.ds.position + this.size;
 }
 
 psdImageData = function (psd) {
