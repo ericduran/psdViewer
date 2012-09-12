@@ -6,7 +6,7 @@
 
 'use strict';
 
-var Util = psd.Util = (function UtilClosure() {
+var Util = psdJs.Util = (function UtilClosure() {
   function Util() {}
 
   Util.pad2 = function(num) {
@@ -20,7 +20,18 @@ var Util = psd.Util = (function UtilClosure() {
     // skipping that section for now.
   }
 
+  Util.rleEnconde = function (data) {
+
+  }
+
   Util.rleDecode = function(data) {
+    var output = "";
+
+    data.forEach(function(pair) {
+      output += new Array(1+pair[0]).join(pair[1])
+    });
+
+    return output;
   }
 
   return Util;

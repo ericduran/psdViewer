@@ -14,7 +14,7 @@
     var f = e.dataTransfer.files[0];
     var reader = new FileReader();
     reader.onload = function (e) {
-      console.log(new psd(this.result));
+      console.log(new psdJs(this.result));
     };
     reader.readAsArrayBuffer(f);
   };
