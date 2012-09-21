@@ -1,0 +1,3 @@
+[submodule "psdJs"]
+	path = psdJs
+	url = git@github.com:ericduran/psdJs.git
